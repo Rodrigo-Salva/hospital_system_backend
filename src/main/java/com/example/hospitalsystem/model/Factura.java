@@ -31,5 +31,8 @@ public class Factura {
 
     @Column(nullable = false, length = 20)
     private String estado = "pendiente"; // pendiente o pagado
-}
 
+    // 👇 Nuevo campo opcional
+    @Column(length = 255)
+    private String descripcion;
+}

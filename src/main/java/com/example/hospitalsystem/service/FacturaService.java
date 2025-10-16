@@ -23,6 +23,13 @@ public class FacturaService {
     @Autowired
     private DetalleFacturaRepository detalleFacturaRepository;
 
+    @Autowired
+    private PacienteRepository pacienteRepository;
+
+    // ===============================
+    // FACTURAS
+    // ===============================
+
     public List<Factura> getAllFacturas() {
         return facturaRepository.findAll();
     }
@@ -35,14 +42,29 @@ public class FacturaService {
         return facturaRepository.findByIdPaciente(idPaciente);
     }
 
+    // 🔹 Nuevo método para buscar por estado
+    public List<Factura> getFacturasByEstado(String estado) {
+        return facturaRepository.findByEstado(estado);
+    }
+
     public Factura createFactura(Factura factura) {
+        // Si no tiene descripción, la dejamos nula para no forzar un valor vacío
+        if (factura.getDescripcion() != null && factura.getDescripcion().trim().isEmpty()) {
+            factura.setDescripcion(null);
+        }
         return facturaRepository.save(factura);
     }
 
     public Factura updateFactura(Long id, Factura factura) {
-        if (facturaRepository.existsById(id)) {
-            factura.setIdFactura(id);
-            return facturaRepository.save(factura);
+        Optional<Factura> existingOpt = facturaRepository.findById(id);
+        if (existingOpt.isPresent()) {
+            Factura existing = existingOpt.get();
+            existing.setIdPaciente(factura.getIdPaciente());
+            existing.setFechaEmision(factura.getFechaEmision());
+            existing.setTotal(factura.getTotal());
+            existing.setEstado(factura.getEstado());
+            existing.setDescripcion(factura.getDescripcion());
+            return facturaRepository.save(existing);
         }
         return null;
     }
@@ -66,7 +88,10 @@ public class FacturaService {
         return false;
     }
 
-    // Métodos para Detalles
+    // ===============================
+    // DETALLES
+    // ===============================
+
     public List<DetalleFactura> getDetallesByFactura(Long idFactura) {
         return detalleFacturaRepository.findByIdFactura(idFactura);
     }
@@ -81,21 +106,19 @@ public class FacturaService {
                 .map(DetalleFactura::getMonto)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        Optional<Factura> facturaOpt = facturaRepository.findById(detalle.getIdFactura());
-        if (facturaOpt.isPresent()) {
-            Factura factura = facturaOpt.get();
+        facturaRepository.findById(detalle.getIdFactura()).ifPresent(factura -> {
             factura.setTotal(total);
             facturaRepository.save(factura);
-        }
+        });
 
         return savedDetalle;
     }
 
-    @Autowired
-    private PacienteRepository pacienteRepository;
+    // ===============================
+    // PACIENTES
+    // ===============================
 
     public Optional<Paciente> getPacienteById(Long idPaciente) {
         return pacienteRepository.findById(idPaciente);
     }
-
 }

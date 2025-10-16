@@ -62,7 +62,6 @@ public class ConsultaController {
         return ResponseEntity.notFound().build();
     }
 
-    // Endpoints para Diagnósticos
     @GetMapping("/{idConsulta}/diagnosticos")
     public ResponseEntity<List<Diagnostico>> getDiagnosticosByConsulta(@PathVariable Long idConsulta) {
         return ResponseEntity.ok(consultaService.getDiagnosticosByConsulta(idConsulta));
