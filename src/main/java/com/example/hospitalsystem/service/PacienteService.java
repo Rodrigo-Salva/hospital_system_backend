@@ -1,5 +1,9 @@
 package com.example.hospitalsystem.service;
 
+import com.example.hospitalsystem.dto.paciente.PacienteRequest;
+import com.example.hospitalsystem.dto.paciente.PacienteResponse;
+import com.example.hospitalsystem.exception.DuplicateResourceException;
+import com.example.hospitalsystem.exception.ResourceNotFoundException;
 import com.example.hospitalsystem.model.AntecedenteMedico;
 import com.example.hospitalsystem.model.HistoriaClinica;
 import com.example.hospitalsystem.model.Paciente;
@@ -7,17 +11,16 @@ import com.example.hospitalsystem.repository.AntecedenteMedicoRepository;
 import com.example.hospitalsystem.repository.HistoriaClinicaRepository;
 import com.example.hospitalsystem.repository.PacienteRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
-/**
- * Servicio que gestiona la lógica de negocio relacionada con los pacientes,
- * sus historias clínicas y antecedentes médicos.
- */
 @Service
 public class PacienteService {
 
@@ -30,85 +33,109 @@ public class PacienteService {
     @Autowired
     private AntecedenteMedicoRepository antecedenteMedicoRepository;
 
-    /**
-     * Obtiene todos los pacientes registrados.
-     */
-    public List<Paciente> getAllPacientes() {
-        return pacienteRepository.findAll();
+    // ---- Mapeo DTO ----
+
+    public PacienteResponse toResponse(Paciente p) {
+        return PacienteResponse.builder()
+                .idPaciente(p.getIdPaciente())
+                .dni(p.getDni())
+                .nombres(p.getNombres())
+                .apellidos(p.getApellidos())
+                .nombreCompleto(p.getNombres() + " " + p.getApellidos())
+                .fechaNacimiento(p.getFechaNacimiento())
+                .sexo(p.getSexo())
+                .direccion(p.getDireccion())
+                .telefono(p.getTelefono())
+                .correo(p.getCorreo())
+                .estado(p.getEstado())
+                .build();
     }
 
-    /**
-     * Busca un paciente por su ID.
-     */
-    public Optional<Paciente> getPacienteById(Long id) {
-        return pacienteRepository.findById(id);
+    private Paciente toEntity(PacienteRequest req) {
+        Paciente p = new Paciente();
+        p.setDni(req.getDni());
+        p.setNombres(req.getNombres());
+        p.setApellidos(req.getApellidos());
+        p.setFechaNacimiento(req.getFechaNacimiento());
+        p.setSexo(req.getSexo());
+        p.setDireccion(req.getDireccion());
+        p.setTelefono(req.getTelefono());
+        p.setCorreo(req.getCorreo());
+        p.setEstado(req.getEstado() != null ? req.getEstado() : "activo");
+        return p;
     }
 
-    /**
-     * Busca un paciente por su número de DNI.
-     */
-    public Optional<Paciente> getPacienteByDni(String dni) {
-        return pacienteRepository.findByDni(dni);
+    // ---- Operaciones ----
+
+    public List<PacienteResponse> getAllPacientes() {
+        return pacienteRepository.findAll().stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
     }
 
-    /**
-     * Crea un nuevo paciente y genera automáticamente su historia clínica.
-     */
+    public Page<PacienteResponse> searchPacientes(String search, String estado, Pageable pageable) {
+        return pacienteRepository.search(search, estado, pageable)
+                .map(this::toResponse);
+    }
+
+    public PacienteResponse getPacienteById(Long id) {
+        return pacienteRepository.findById(id)
+                .map(this::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente", id));
+    }
+
+    public Optional<PacienteResponse> getPacienteByDni(String dni) {
+        return pacienteRepository.findByDni(dni).map(this::toResponse);
+    }
+
     @Transactional
-    public Paciente createPaciente(Paciente paciente) {
-        // Guardar el paciente
-        Paciente savedPaciente = pacienteRepository.save(paciente);
+    public PacienteResponse createPaciente(PacienteRequest request) {
+        if (pacienteRepository.findByDni(request.getDni()).isPresent()) {
+            throw new DuplicateResourceException("Ya existe un paciente con el DNI: " + request.getDni());
+        }
 
-        // Crear automáticamente una historia clínica asociada
+        Paciente saved = pacienteRepository.save(toEntity(request));
+
+        // Crear historia clínica automáticamente
         HistoriaClinica historia = new HistoriaClinica();
-        historia.setIdPaciente(savedPaciente.getIdPaciente());
+        historia.setIdPaciente(saved.getIdPaciente());
         historia.setFechaApertura(LocalDate.now());
         historia.setObservaciones("Historia clínica creada automáticamente");
-
         historiaClinicaRepository.save(historia);
 
-        return savedPaciente;
+        return toResponse(saved);
     }
 
-    /**
-     * Actualiza los datos de un paciente existente.
-     */
-    public Paciente updatePaciente(Long id, Paciente paciente) {
-        if (pacienteRepository.existsById(id)) {
-            paciente.setIdPaciente(id);
-            return pacienteRepository.save(paciente);
+    public PacienteResponse updatePaciente(Long id, PacienteRequest request) {
+        Paciente existing = pacienteRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente", id));
+
+        // Verificar DNI duplicado (solo si cambió)
+        if (!existing.getDni().equals(request.getDni()) &&
+                pacienteRepository.findByDni(request.getDni()).isPresent()) {
+            throw new DuplicateResourceException("Ya existe un paciente con el DNI: " + request.getDni());
         }
-        return null;
+
+        Paciente updated = toEntity(request);
+        updated.setIdPaciente(id);
+        return toResponse(pacienteRepository.save(updated));
     }
 
-    /**
-     * Elimina un paciente por su ID.
-     */
-    public boolean deletePaciente(Long id) {
-        if (pacienteRepository.existsById(id)) {
-            pacienteRepository.deleteById(id);
-            return true;
+    public void deletePaciente(Long id) {
+        if (!pacienteRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Paciente", id);
         }
-        return false;
+        pacienteRepository.deleteById(id);
     }
 
-    /**
-     * Obtiene la historia clínica asociada a un paciente.
-     */
     public Optional<HistoriaClinica> getHistoriaClinicaByPaciente(Long idPaciente) {
         return historiaClinicaRepository.findByIdPaciente(idPaciente);
     }
 
-    /**
-     * Obtiene los antecedentes médicos asociados a una historia clínica.
-     */
     public List<AntecedenteMedico> getAntecedentesByHistoria(Long idHistoria) {
         return antecedenteMedicoRepository.findByIdHistoria(idHistoria);
     }
 
-    /**
-     * Agrega un nuevo antecedente médico a una historia clínica.
-     */
     public AntecedenteMedico addAntecedenteMedico(AntecedenteMedico antecedente) {
         return antecedenteMedicoRepository.save(antecedente);
     }

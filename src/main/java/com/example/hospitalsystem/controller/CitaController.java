@@ -1,8 +1,14 @@
 package com.example.hospitalsystem.controller;
 
-import com.example.hospitalsystem.model.Cita;
+import com.example.hospitalsystem.dto.cita.CitaRequest;
+import com.example.hospitalsystem.dto.cita.CitaResponse;
+import com.example.hospitalsystem.dto.common.ApiResponse;
 import com.example.hospitalsystem.service.CitaService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,70 +20,63 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/citas")
-@CrossOrigin(origins = "http://localhost:3000")
 public class CitaController {
 
     @Autowired
     private CitaService citaService;
 
     @GetMapping
-    public ResponseEntity<List<Cita>> getAllCitas() {
-        return ResponseEntity.ok(citaService.getAllCitas());
+    public ResponseEntity<ApiResponse<Page<CitaResponse>>> getAllCitas(
+            @RequestParam(required = false) String estado,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @PageableDefault(size = 10, sort = "fecha") Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.ok(citaService.searchCitas(estado, fecha, pageable)));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Cita> getCitaById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<CitaResponse>> getCitaById(@PathVariable Long id) {
         return citaService.getCitaById(id)
-                .map(ResponseEntity::ok)
+                .map(c -> ResponseEntity.ok(ApiResponse.ok(c)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/paciente/{idPaciente}")
-    public ResponseEntity<List<Cita>> getCitasByPaciente(@PathVariable Long idPaciente) {
-        return ResponseEntity.ok(citaService.getCitasByPaciente(idPaciente));
+    public ResponseEntity<ApiResponse<List<CitaResponse>>> getCitasByPaciente(@PathVariable Long idPaciente) {
+        return ResponseEntity.ok(ApiResponse.ok(citaService.getCitasByPaciente(idPaciente)));
     }
 
     @GetMapping("/medico/{idMedico}")
-    public ResponseEntity<List<Cita>> getCitasByMedico(@PathVariable Long idMedico) {
-        return ResponseEntity.ok(citaService.getCitasByMedico(idMedico));
+    public ResponseEntity<ApiResponse<List<CitaResponse>>> getCitasByMedico(@PathVariable Long idMedico) {
+        return ResponseEntity.ok(ApiResponse.ok(citaService.getCitasByMedico(idMedico)));
     }
 
     @GetMapping("/fecha/{fecha}")
-    public ResponseEntity<List<Cita>> getCitasByFecha(
+    public ResponseEntity<ApiResponse<List<CitaResponse>>> getCitasByFecha(
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
-        return ResponseEntity.ok(citaService.getCitasByFecha(fecha));
+        return ResponseEntity.ok(ApiResponse.ok(citaService.getCitasByFecha(fecha)));
     }
 
     @PostMapping
-    public ResponseEntity<Cita> createCita(@RequestBody Cita cita) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(citaService.createCita(cita));
+    public ResponseEntity<ApiResponse<CitaResponse>> createCita(@Valid @RequestBody CitaRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(citaService.createCita(request), "Cita registrada exitosamente"));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Cita> updateCita(@PathVariable Long id, @RequestBody Cita cita) {
-        Cita updatedCita = citaService.updateCita(id, cita);
-        if (updatedCita != null) {
-            return ResponseEntity.ok(updatedCita);
-        }
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<ApiResponse<CitaResponse>> updateCita(
+            @PathVariable Long id, @Valid @RequestBody CitaRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(citaService.updateCita(id, request)));
     }
 
     @PatchMapping("/{id}/estado")
-    public ResponseEntity<Cita> cambiarEstado(@PathVariable Long id,
-                                              @RequestBody Map<String, String> body) {
-        String nuevoEstado = body.get("estado");
-        Cita updatedCita = citaService.cambiarEstado(id, nuevoEstado);
-        if (updatedCita != null) {
-            return ResponseEntity.ok(updatedCita);
-        }
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<ApiResponse<CitaResponse>> cambiarEstado(@PathVariable Long id,
+                                                                   @RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(ApiResponse.ok(citaService.cambiarEstado(id, body.get("estado"))));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteCita(@PathVariable Long id) {
-        if (citaService.deleteCita(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
+        citaService.deleteCita(id);
+        return ResponseEntity.noContent().build();
     }
 }

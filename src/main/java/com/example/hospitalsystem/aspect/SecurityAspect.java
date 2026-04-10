@@ -6,7 +6,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+
+import java.util.Collection;
 
 @Aspect
 @Component
@@ -18,31 +23,30 @@ public class SecurityAspect {
         String requiredRole = requiresRole.value();
         String methodName = joinPoint.getSignature().getName();
 
-        // AQUÍ conectas con tu sistema de autenticación real
-        // Por ahora simulo la verificación
-        String currentUserRole = getCurrentUserRole();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-        log.info("🔒 Verificando autorización: método={}, rol requerido={}, rol actual={}",
-                methodName, requiredRole, currentUserRole);
+        if (authentication == null || !authentication.isAuthenticated()) {
+            log.error("Acceso denegado (no autenticado) al metodo {}", methodName);
+            throw new UnauthorizedException("Debes autenticarte para ejecutar esta operacion");
+        }
 
-        if (!hasPermission(currentUserRole, requiredRole)) {
-            log.error("⛔ Acceso denegado para {} al método {}", currentUserRole, methodName);
+        String username = authentication.getName();
+        Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
+
+        boolean hasRole = authorities.stream()
+                .anyMatch(a -> a.getAuthority().equals(requiredRole)
+                        || a.getAuthority().equals("ROLE_ADMIN"));
+
+        log.info("Verificando autorizacion: metodo={}, rol requerido={}, usuario={}",
+                methodName, requiredRole, username);
+
+        if (!hasRole) {
+            log.error("Acceso denegado para usuario={} al metodo {}", username, methodName);
             throw new UnauthorizedException(
-                    "No tienes permiso para ejecutar esta operación. Se requiere rol: " + requiredRole
+                    "No tienes permiso para ejecutar esta operacion. Se requiere rol: " + requiredRole
             );
         }
 
-        log.info("✅ Autorización concedida para {}", methodName);
-    }
-
-    // Método temporal - REEMPLAZAR con tu lógica de autenticación
-    private String getCurrentUserRole() {
-        // TODO: Obtener del SecurityContext o JWT
-        return "DOCTOR"; // Simulación
-    }
-
-    private boolean hasPermission(String userRole, String requiredRole) {
-        // TODO: Implementar lógica de roles real
-        return userRole.equals(requiredRole) || userRole.equals("ADMIN");
+        log.info("Autorizacion concedida para usuario={} en metodo {}", username, methodName);
     }
 }

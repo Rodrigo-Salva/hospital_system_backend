@@ -1,5 +1,8 @@
 package com.example.hospitalsystem.service;
 
+import com.example.hospitalsystem.dto.factura.FacturaRequest;
+import com.example.hospitalsystem.dto.factura.FacturaResponse;
+import com.example.hospitalsystem.exception.ResourceNotFoundException;
 import com.example.hospitalsystem.model.DetalleFactura;
 import com.example.hospitalsystem.model.Factura;
 import com.example.hospitalsystem.model.Paciente;
@@ -7,12 +10,15 @@ import com.example.hospitalsystem.repository.DetalleFacturaRepository;
 import com.example.hospitalsystem.repository.FacturaRepository;
 import com.example.hospitalsystem.repository.PacienteRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class FacturaService {
@@ -26,71 +32,92 @@ public class FacturaService {
     @Autowired
     private PacienteRepository pacienteRepository;
 
-    // ===============================
-    // FACTURAS
-    // ===============================
+    // ---- Mapeo DTO ----
 
-    public List<Factura> getAllFacturas() {
-        return facturaRepository.findAll();
+    public FacturaResponse toResponse(Factura f) {
+        String pacienteNombre = pacienteRepository.findById(f.getIdPaciente())
+                .map(p -> p.getNombres() + " " + p.getApellidos())
+                .orElse("Desconocido");
+
+        return FacturaResponse.builder()
+                .idFactura(f.getIdFactura())
+                .idPaciente(f.getIdPaciente())
+                .pacienteNombre(pacienteNombre)
+                .fechaEmision(f.getFechaEmision())
+                .total(f.getTotal())
+                .estado(f.getEstado())
+                .descripcion(f.getDescripcion())
+                .build();
     }
 
-    public Optional<Factura> getFacturaById(Long id) {
+    private Factura toEntity(FacturaRequest req) {
+        Factura f = new Factura();
+        f.setIdPaciente(req.getIdPaciente());
+        f.setFechaEmision(req.getFechaEmision());
+        f.setTotal(req.getTotal() != null ? req.getTotal() : BigDecimal.ZERO);
+        f.setEstado(req.getEstado() != null ? req.getEstado() : "pendiente");
+        if (req.getDescripcion() != null && !req.getDescripcion().trim().isEmpty()) {
+            f.setDescripcion(req.getDescripcion());
+        }
+        return f;
+    }
+
+    // ---- Facturas ----
+
+    public List<FacturaResponse> getAllFacturas() {
+        return facturaRepository.findAll().stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public Page<FacturaResponse> searchFacturas(String estado, Pageable pageable) {
+        return facturaRepository.search(estado, pageable)
+                .map(this::toResponse);
+    }
+
+    public Optional<Factura> getFacturaEntityById(Long id) {
         return facturaRepository.findById(id);
     }
 
-    public List<Factura> getFacturasByPaciente(Long idPaciente) {
-        return facturaRepository.findByIdPaciente(idPaciente);
+    public Optional<FacturaResponse> getFacturaById(Long id) {
+        return facturaRepository.findById(id).map(this::toResponse);
     }
 
-    // 🔹 Nuevo método para buscar por estado
-    public List<Factura> getFacturasByEstado(String estado) {
-        return facturaRepository.findByEstado(estado);
+    public List<FacturaResponse> getFacturasByPaciente(Long idPaciente) {
+        return facturaRepository.findByIdPaciente(idPaciente).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
     }
 
-    public Factura createFactura(Factura factura) {
-        // Si no tiene descripción, la dejamos nula para no forzar un valor vacío
-        if (factura.getDescripcion() != null && factura.getDescripcion().trim().isEmpty()) {
-            factura.setDescripcion(null);
+    public List<FacturaResponse> getFacturasByEstado(String estado) {
+        return facturaRepository.findByEstado(estado).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public FacturaResponse createFactura(FacturaRequest request) {
+        return toResponse(facturaRepository.save(toEntity(request)));
+    }
+
+    public FacturaResponse updateFactura(Long id, FacturaRequest request) {
+        Factura existing = facturaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Factura", id));
+        existing.setIdPaciente(request.getIdPaciente());
+        existing.setFechaEmision(request.getFechaEmision());
+        if (request.getTotal() != null) existing.setTotal(request.getTotal());
+        existing.setEstado(request.getEstado() != null ? request.getEstado() : existing.getEstado());
+        existing.setDescripcion(request.getDescripcion());
+        return toResponse(facturaRepository.save(existing));
+    }
+
+    public void deleteFactura(Long id) {
+        if (!facturaRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Factura", id);
         }
-        return facturaRepository.save(factura);
+        facturaRepository.deleteById(id);
     }
 
-    public Factura updateFactura(Long id, Factura factura) {
-        Optional<Factura> existingOpt = facturaRepository.findById(id);
-        if (existingOpt.isPresent()) {
-            Factura existing = existingOpt.get();
-            existing.setIdPaciente(factura.getIdPaciente());
-            existing.setFechaEmision(factura.getFechaEmision());
-            existing.setTotal(factura.getTotal());
-            existing.setEstado(factura.getEstado());
-            existing.setDescripcion(factura.getDescripcion());
-            return facturaRepository.save(existing);
-        }
-        return null;
-    }
-
-    @Transactional
-    public Factura cambiarEstado(Long id, String nuevoEstado) {
-        Optional<Factura> facturaOpt = facturaRepository.findById(id);
-        if (facturaOpt.isPresent()) {
-            Factura factura = facturaOpt.get();
-            factura.setEstado(nuevoEstado);
-            return facturaRepository.save(factura);
-        }
-        return null;
-    }
-
-    public boolean deleteFactura(Long id) {
-        if (facturaRepository.existsById(id)) {
-            facturaRepository.deleteById(id);
-            return true;
-        }
-        return false;
-    }
-
-    // ===============================
-    // DETALLES
-    // ===============================
+    // ---- Detalles ----
 
     public List<DetalleFactura> getDetallesByFactura(Long idFactura) {
         return detalleFacturaRepository.findByIdFactura(idFactura);
@@ -98,9 +125,9 @@ public class FacturaService {
 
     @Transactional
     public DetalleFactura addDetalle(DetalleFactura detalle) {
-        DetalleFactura savedDetalle = detalleFacturaRepository.save(detalle);
+        DetalleFactura saved = detalleFacturaRepository.save(detalle);
 
-        // Recalcular el total de la factura
+        // Recalcular total de la factura
         List<DetalleFactura> detalles = detalleFacturaRepository.findByIdFactura(detalle.getIdFactura());
         BigDecimal total = detalles.stream()
                 .map(DetalleFactura::getMonto)
@@ -111,13 +138,10 @@ public class FacturaService {
             facturaRepository.save(factura);
         });
 
-        return savedDetalle;
+        return saved;
     }
 
-    // ===============================
-    // PACIENTES
-    // ===============================
-
+    // Para uso del FacturaController al generar PDF
     public Optional<Paciente> getPacienteById(Long idPaciente) {
         return pacienteRepository.findById(idPaciente);
     }

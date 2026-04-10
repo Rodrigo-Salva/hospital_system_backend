@@ -1,11 +1,16 @@
 package com.example.hospitalsystem.controller;
 
-
+import com.example.hospitalsystem.dto.common.ApiResponse;
+import com.example.hospitalsystem.dto.paciente.PacienteRequest;
+import com.example.hospitalsystem.dto.paciente.PacienteResponse;
 import com.example.hospitalsystem.model.AntecedenteMedico;
 import com.example.hospitalsystem.model.HistoriaClinica;
-import com.example.hospitalsystem.model.Paciente;
 import com.example.hospitalsystem.service.PacienteService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,52 +19,49 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/pacientes")
-@CrossOrigin(origins = "http://localhost:3000")
 public class PacienteController {
 
     @Autowired
     private PacienteService pacienteService;
 
     @GetMapping
-    public ResponseEntity<List<Paciente>> getAllPacientes() {
-        return ResponseEntity.ok(pacienteService.getAllPacientes());
+    public ResponseEntity<ApiResponse<Page<PacienteResponse>>> getAllPacientes(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String estado,
+            @PageableDefault(size = 10, sort = "apellidos") Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.ok(pacienteService.searchPacientes(search, estado, pageable)));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Paciente> getPacienteById(@PathVariable Long id) {
-        return pacienteService.getPacienteById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ApiResponse<PacienteResponse>> getPacienteById(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(pacienteService.getPacienteById(id)));
     }
 
     @GetMapping("/dni/{dni}")
-    public ResponseEntity<Paciente> getPacienteByDni(@PathVariable String dni) {
+    public ResponseEntity<ApiResponse<PacienteResponse>> getPacienteByDni(@PathVariable String dni) {
         return pacienteService.getPacienteByDni(dni)
-                .map(ResponseEntity::ok)
+                .map(p -> ResponseEntity.ok(ApiResponse.ok(p)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<Paciente> createPaciente(@RequestBody Paciente paciente) {
-        Paciente savedPaciente = pacienteService.createPaciente(paciente);
-        return ResponseEntity.status(HttpStatus.CREATED).body(savedPaciente);
+    public ResponseEntity<ApiResponse<PacienteResponse>> createPaciente(
+            @Valid @RequestBody PacienteRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(pacienteService.createPaciente(request), "Paciente registrado exitosamente"));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Paciente> updatePaciente(@PathVariable Long id, @RequestBody Paciente paciente) {
-        Paciente updatedPaciente = pacienteService.updatePaciente(id, paciente);
-        if (updatedPaciente != null) {
-            return ResponseEntity.ok(updatedPaciente);
-        }
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<ApiResponse<PacienteResponse>> updatePaciente(
+            @PathVariable Long id, @Valid @RequestBody PacienteRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                pacienteService.updatePaciente(id, request), "Paciente actualizado exitosamente"));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletePaciente(@PathVariable Long id) {
-        if (pacienteService.deletePaciente(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
+        pacienteService.deletePaciente(id);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/historia-clinica")

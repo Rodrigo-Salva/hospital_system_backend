@@ -1,9 +1,16 @@
 package com.example.hospitalsystem.controller;
 
+import com.example.hospitalsystem.dto.common.ApiResponse;
+import com.example.hospitalsystem.dto.medico.EspecialidadRequest;
+import com.example.hospitalsystem.dto.medico.MedicoRequest;
+import com.example.hospitalsystem.dto.medico.MedicoResponse;
 import com.example.hospitalsystem.model.Especialidad;
-import com.example.hospitalsystem.model.Medico;
 import com.example.hospitalsystem.service.MedicoService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -12,50 +19,51 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/medicos")
-@CrossOrigin(origins = "http://localhost:3000")
 public class MedicoController {
 
     @Autowired
     private MedicoService medicoService;
 
     @GetMapping
-    public ResponseEntity<List<Medico>> getAllMedicos() {
-        return ResponseEntity.ok(medicoService.getAllMedicos());
+    public ResponseEntity<ApiResponse<Page<MedicoResponse>>> getAllMedicos(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String estado,
+            @PageableDefault(size = 10, sort = "apellidos") Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.ok(medicoService.searchMedicos(search, estado, pageable)));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Medico> getMedicoById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<MedicoResponse>> getMedicoById(@PathVariable Long id) {
         return medicoService.getMedicoById(id)
-                .map(ResponseEntity::ok)
+                .map(m -> ResponseEntity.ok(ApiResponse.ok(m)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<Medico> createMedico(@RequestBody Medico medico) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(medicoService.createMedico(medico));
+    public ResponseEntity<ApiResponse<MedicoResponse>> createMedico(
+            @Valid @RequestBody MedicoRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(medicoService.createMedico(request), "Médico registrado exitosamente"));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Medico> updateMedico(@PathVariable Long id, @RequestBody Medico medico) {
-        Medico updatedMedico = medicoService.updateMedico(id, medico);
-        if (updatedMedico != null) {
-            return ResponseEntity.ok(updatedMedico);
-        }
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<ApiResponse<MedicoResponse>> updateMedico(
+            @PathVariable Long id, @Valid @RequestBody MedicoRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                medicoService.updateMedico(id, request), "Médico actualizado exitosamente"));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteMedico(@PathVariable Long id) {
-        if (medicoService.deleteMedico(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
+        medicoService.deleteMedico(id);
+        return ResponseEntity.noContent().build();
     }
 
-    // Endpoints para Especialidades
+    // ---- Especialidades ----
+
     @GetMapping("/especialidades")
-    public ResponseEntity<List<Especialidad>> getAllEspecialidades() {
-        return ResponseEntity.ok(medicoService.getAllEspecialidades());
+    public ResponseEntity<ApiResponse<List<Especialidad>>> getAllEspecialidades() {
+        return ResponseEntity.ok(ApiResponse.ok(medicoService.getAllEspecialidades()));
     }
 
     @GetMapping("/especialidades/{id}")
@@ -66,26 +74,21 @@ public class MedicoController {
     }
 
     @PostMapping("/especialidades")
-    public ResponseEntity<Especialidad> createEspecialidad(@RequestBody Especialidad especialidad) {
+    public ResponseEntity<ApiResponse<Especialidad>> createEspecialidad(
+            @Valid @RequestBody EspecialidadRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(medicoService.createEspecialidad(especialidad));
+                .body(ApiResponse.ok(medicoService.createEspecialidad(request), "Especialidad creada exitosamente"));
     }
 
     @PutMapping("/especialidades/{id}")
-    public ResponseEntity<Especialidad> updateEspecialidad(@PathVariable Long id,
-                                                           @RequestBody Especialidad especialidad) {
-        Especialidad updated = medicoService.updateEspecialidad(id, especialidad);
-        if (updated != null) {
-            return ResponseEntity.ok(updated);
-        }
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<ApiResponse<Especialidad>> updateEspecialidad(
+            @PathVariable Long id, @Valid @RequestBody EspecialidadRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(medicoService.updateEspecialidad(id, request)));
     }
 
     @DeleteMapping("/especialidades/{id}")
     public ResponseEntity<Void> deleteEspecialidad(@PathVariable Long id) {
-        if (medicoService.deleteEspecialidad(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
+        medicoService.deleteEspecialidad(id);
+        return ResponseEntity.noContent().build();
     }
 }
